@@ -1,0 +1,68 @@
+###############################################################################
+##                                                                           ##
+##                     BPNN   parameters   file                              ##
+##                                                           By  Ma Teng     ##
+###############################################################################
+
+##-----------------------------------------------------------------------------
+## 1. Basic parameters
+##-----------------------------------------------------------------------------
+WorkDir: /content/
+Device: cpu                        # cpu or gpu
+Dtype: float32                     # float32 or float64
+Seed: 7                            # random seed
+ReStart: True                     # restart from a checkpoint
+LogFile: LOG                  # log file name
+
+##-----------------------------------------------------------------------------
+## 2. Data parameters
+##-----------------------------------------------------------------------------
+Elements: [79]                     # atomic number of elements
+Transform: True                    # transform the data
+Data:
+    0:
+        Path: /content/Au6_100t300v.traj
+        TrainSize: 100
+        ValidSize: 300
+Shuffle: False
+Scale:
+    Scale: True
+    Method: Standard              # Standard or MinMax
+    G: True
+    E: True
+    F: True
+
+
+##-----------------------------------------------------------------------------
+## 3. ACSF parameters
+##-----------------------------------------------------------------------------
+Method:
+    name: Giulio Imbalzano
+    n: 6
+CutoffRadius: 6.0                 # Angstrom
+
+##-----------------------------------------------------------------------------
+## 4. NN parameters
+##-----------------------------------------------------------------------------
+HiddenLayers: [16, 16]
+LearningRate: 0.0001
+MaxEpochs: 5000
+BatchSize: 100
+LossFn:
+    Ce: 1.0                        # Coefficient of energy
+    Cf: 1.0                        # Coefficient of force
+    Cw: 0.01                       # Regularization coefficient
+EarlyStopping:
+    patience: 25
+    threshold: 0.0001
+LearningRateDecay:
+    patience: 10
+    factor: 0.5
+    min_lr: 1e-6
+
+
+##-----------------------------------------------------------------------------
+## 5. Wandb parameters
+##-----------------------------------------------------------------------------
+Project: Au_test
+TaskName: test
