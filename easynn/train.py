@@ -1,5 +1,6 @@
 from easynn.model import Model, init_params
-from easynn.data import EASYDATA
+from easynn.data import EasyData
+from easynn.logging import Logger
 import torch
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -9,7 +10,6 @@ import os
 import numpy as np
 from tqdm import tqdm
 import time
-import logging
 
 
 def train(params_file):
@@ -41,7 +41,7 @@ def train(params_file):
     np.random.seed(p['Seed'])
 
     # Read data
-    ED = EASYDATA(params_file)
+    ED = EasyData(params_file)
     if p['Transform']:
         ED.transform_data()
     data_train = ED.load_data(train=True)
@@ -60,15 +60,16 @@ def train(params_file):
             'F': data_train['F'] + data_valid['F'],
             'G': data_train['G'] + data_valid['G']}
         scale = ED.scale_data(data_scale)
+        torch.save(scale, p['WorkDir']+'scale.pt')
 
     # Initialize or load the model
     model = Model(data_train['G'][0].shape[-1], p['HiddenLayers'])
     if dtype == torch.float64:
         model.double()
-    if p['ReStart']:
-        model.apply(init_params)
-    else:
+    if p['Resume']:
         model.load_state_dict(torch.load(p['WorkDir']+'best_model.pt'))
+    else:
+        model.apply(init_params)
     model.to(device=device)
 
     # Initialize optimizer and scheduler
@@ -81,22 +82,23 @@ def train(params_file):
         patience=p['LearningRateDecay']['patience'])
 
     # Logging
-    logging.basicConfig(level=logging.INFO,
-                        format='%(message)s',
-                        filename=p['WorkDir']+p['LogFile'])
+    log = Logger(p['WorkDir']+'LOG')
 
     # Train the model
     os.makedirs(p['WorkDir'], exist_ok=True)
     os.environ["WANDB_NOTEBOOK_NAME"] = "EasyNN"
-    wandb.init(project=p['Project'], name=p['TaskName'], resume=p['ReStart'],
+    wandb.init(project=p['Project'], name=p['TaskName'], resume=p['Resume'],
                anonymous="allow")
-    wandb.login()
     Ce, Cf, Cw = p['LossFn']['Ce'], p['LossFn']['Cf'], p['LossFn']['Cw']
     ESCOUNT = 0  # Early stopping counter
     start = time.time()
-    logging.info(f"Training started at {time.ctime(start)}")
+    log.info(f"Training started at {time.ctime(start)}")
+    log.info('Epoch | Train Loss | Valid Loss |')
     for ep in tqdm(range(p['MaxEpochs'])):
         if optimizer.param_groups[0]['lr'] < float(p['LearningRateDecay']['min_lr']):
+            log.info("Learning rate is below the minimum value")
+            log.info("Training stopped")
+            log.info(f"Total training time: {time.time()-start:.2f} s")
             break
 
         # Train
@@ -177,13 +179,16 @@ def train(params_file):
             best_loss = loss_valid
         if loss_valid < best_loss:
             best_loss = loss_valid
-            torch.save(model.state_dict(), p['WorkDir']+'best_model.pt')
-            logging.info(f"Best model saved at epoch {ep}!")
+            torch.save(model, p['WorkDir']+'best_model.pt')
+        if ep % 100 == 0:
+            torch.save(model, p['WorkDir']+'checkpoint.pt')
+            log.info(f"{ep:06d} {loss_train:8.4f} {loss_valid:8.4f}")
         if ep > p['MaxEpochs']:
-            logging.info(f"Not converged after {p['MaxEpochs']} epochs!")
-            logging.info("Please increase the number of epochs!")
+            log.info(f"Not converged after {p['MaxEpochs']} epochs!")
+            log.info("Please increase the number of epochs!")
+            log.info(f"Total time: {time.time() - start:.2f} s.")
+            log.close()
             wandb.finish()
-            logging.info(f"Total time: {time.time() - start:.2f} s.")
             break
 
         # Early stopping
@@ -192,9 +197,10 @@ def train(params_file):
         else:
             ESCOUNT = 0
         if ESCOUNT > p['EarlyStopping']['patience']:
-            logging.info("The validation loss has not improved for 25 epochs.")
-            logging.info(f"Training stopped at epoch {ep}.")
+            log.info("The validation loss has not improved for 25 epochs.")
+            log.info(f"Training stopped at epoch {ep}.")
+            log.info(f"Total time: {time.time() - start:.2f} s.")
+            log.close()
             wandb.finish()
-            logging.info(f"Total time: {time.time() - start:.2f} s.")
             break
         scheduler.step(loss_valid)

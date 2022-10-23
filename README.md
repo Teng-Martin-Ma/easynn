@@ -16,9 +16,11 @@ easynn
 
 ## Functionality
 
-* Fast calulate Behler Parinello descriptors
-* Train BPNN, currently only support 2nd generation BPNN
+* Automatically generate Behler Parinello descriptors
+* Fast Train BPNN, currently only support 2nd generation BPNN
 * Monitor training process with Wandb
+* Support for GPU
+* Hook to ASE calculator, which can be used to optimization or MD
 
 
 ## Dependencies
@@ -51,5 +53,5 @@ train('configs/params.yaml')
 * [ ] Add more optimizers
 * [ ] Add more activation functions
 * [ ] Connect to EasyPLOT to analyze the results
-* [ ] Log training process in config file and train function
+* [X] ~~Log training process in config file and train function~~
 

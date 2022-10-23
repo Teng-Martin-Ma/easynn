@@ -11,8 +11,8 @@ WorkDir: /content/
 Device: cpu                        # cpu or gpu
 Dtype: float32                     # float32 or float64
 Seed: 7                            # random seed
-ReStart: True                     # restart from a checkpoint
-LogFile: LOG                  # log file name
+Resume: True                       # resume from a checkpoint
+LogFile: LOG                       # log file name
 
 ##-----------------------------------------------------------------------------
 ## 2. Data parameters
@@ -31,7 +31,6 @@ Scale:
     G: True
     E: True
     F: True
-
 
 ##-----------------------------------------------------------------------------
 ## 3. ACSF parameters

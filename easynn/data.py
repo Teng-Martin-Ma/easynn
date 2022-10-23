@@ -6,7 +6,7 @@ import torch
 import numpy as np
 
 
-class EASYDATA:
+class EasyData:
     """The class deals with data, such as transforming, loading, scaling.
 
     Args:
