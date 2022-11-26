@@ -10,6 +10,7 @@ class Logger:
 
     def __init__(self, logname):
         self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.DEBUG)
         for handler in self.logger.handlers:
             self.logger.removeHandler(handler)
         fh = logging.FileHandler(logname)
@@ -23,5 +24,5 @@ class Logger:
 
     def close(self):
         """Close the logger."""
-        self.log('')
+        self.info('')
         logging.shutdown()

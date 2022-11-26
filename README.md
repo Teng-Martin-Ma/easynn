@@ -11,7 +11,7 @@ easynn
 │   ├── model.py  
 │   ├── train.py  
 ├── configs  
-├── test  
+├── tests  
 ├── README.md  
 
 ## Functionality
@@ -20,7 +20,7 @@ easynn
 * Fast Train BPNN, currently only support 2nd generation BPNN
 * Monitor training process with Wandb
 * Support for GPU
-* Hook to ASE calculator, which can be used to optimization or MD
+* Hook to ASE calculator, which can be used to run optimization or MD
 
 
 ## Dependencies

@@ -22,6 +22,10 @@ class Model(nn.Module):
         self.output = nn.Linear(hidden_sizes[-1], 1)
         self.act = nn.Tanh()
 
+    def count_params(self):
+        nparams = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        return nparams
+
     def forward(self, x):
         x = self.input(x)
         x = self.act(x)

@@ -40,10 +40,19 @@ def train(params_file):
     torch.cuda.manual_seed(p['Seed'])
     np.random.seed(p['Seed'])
 
+    # Logging
+    os.makedirs(p['WorkDir'], exist_ok=True)
+    log = Logger(p['WorkDir']+'LOG')
+
     # Read data
     ED = EasyData(params_file)
     if p['Transform']:
+        trans_start = time.time()
+        log.info('Transforming data...')
         ED.transform_data()
+        trans_time = time.time() - trans_start
+        log.info(f"Data transformed. The total time is {trans_time:.4f} seconds.")
+
     data_train = ED.load_data(train=True)
     ntrain = torch.cat(data_train['ID']).shape[-1]
     dl_train = DataLoader(torch.arange(ntrain),
@@ -71,6 +80,7 @@ def train(params_file):
     else:
         model.apply(init_params)
     model.to(device=device)
+    log.info(f"Model has {model.count_params()} trainable parameters.")
 
     # Initialize optimizer and scheduler
     optimizer = torch.optim.Adam(
@@ -81,24 +91,20 @@ def train(params_file):
         factor=p['LearningRateDecay']['factor'],
         patience=p['LearningRateDecay']['patience'])
 
-    # Logging
-    log = Logger(p['WorkDir']+'LOG')
-
     # Train the model
-    os.makedirs(p['WorkDir'], exist_ok=True)
     os.environ["WANDB_NOTEBOOK_NAME"] = "EasyNN"
     wandb.init(project=p['Project'], name=p['TaskName'], resume=p['Resume'],
                anonymous="allow")
     Ce, Cf, Cw = p['LossFn']['Ce'], p['LossFn']['Cf'], p['LossFn']['Cw']
     ESCOUNT = 0  # Early stopping counter
-    start = time.time()
-    log.info(f"Training started at {time.ctime(start)}")
+    train_start = time.time()
+    log.info(f"Training data... started at {time.ctime(train_start)}")
     log.info('Epoch | Train Loss | Valid Loss |')
     for ep in tqdm(range(p['MaxEpochs'])):
         if optimizer.param_groups[0]['lr'] < float(p['LearningRateDecay']['min_lr']):
             log.info("Learning rate is below the minimum value")
             log.info("Training stopped")
-            log.info(f"Total training time: {time.time()-start:.2f} s")
+            log.info(f"Total training time: {time.time()-train_start:.4f} s")
             break
 
         # Train
@@ -171,7 +177,7 @@ def train(params_file):
         wandb.log({'ep': ep,
                    'loss_train': loss_train,
                    'loss_valid': loss_valid,
-                   'cumulative_time': time.time() - start,
+                   'cumulative_time': time.time() - train_start,
                    'lr': optimizer.param_groups[0]['lr']})
 
         # Save the best model
@@ -186,7 +192,8 @@ def train(params_file):
         if ep > p['MaxEpochs']:
             log.info(f"Not converged after {p['MaxEpochs']} epochs!")
             log.info("Please increase the number of epochs!")
-            log.info(f"Total time: {time.time() - start:.2f} s.")
+            log.info(f"Train loss: {loss_train:.4f} Valid loss: {loss_valid:.4f}")
+            log.info(f"Total time: {time.time() - train_start:.4f} s.")
             log.close()
             wandb.finish()
             break
@@ -199,7 +206,8 @@ def train(params_file):
         if ESCOUNT > p['EarlyStopping']['patience']:
             log.info("The validation loss has not improved for 25 epochs.")
             log.info(f"Training stopped at epoch {ep}.")
-            log.info(f"Total time: {time.time() - start:.2f} s.")
+            log.info(f"Train loss: {loss_train:.4f} Valid loss: {loss_valid:.4f}")
+            log.info(f"Total time: {time.time() - train_start:.4f} s.")
             log.close()
             wandb.finish()
             break
