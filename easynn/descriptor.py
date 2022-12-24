@@ -2,7 +2,7 @@ import torch
 from functorch import jacrev
 from ase.neighborlist import NeighborList, NewPrimitiveNeighborList
 import numpy as np
-import os
+from tqdm import tqdm
 
 
 def get_neighbors(image, r_c):
@@ -76,32 +76,30 @@ class ACSF:
 
     """
 
-    def __init__(self, params):
-        self.params = params
-        if self.params['Device'] == 'cpu':
-            self.device = torch.device('cpu')
-        elif self.params['Device'] == 'gpu':
-            self.device = torch.device('cuda:0')
+    def __init__(self, wd, elements, rc, device='cpu', dtype=torch.float32,
+                 method={'name': 'Giulio Imbalzano', 'n': 6}, params=None):
+        self.device = device
+        self.dtype = dtype
+        self.wd = wd
+        self.elements = elements
+        self.r_c = rc
+        if params:
+            self.acsf_params = params
+        else:
+            self.acsf_params = self.acsf_params(method)
 
-        if self.params['Dtype'] == 'float64':
-            self.dtype = torch.float64
-        elif self.params['Dtype'] == 'float32':
-            self.dtype = torch.float32
-
-        self.elements = self.params['Elements']
-        self.r_c = self.params['CutoffRadius']
-        self.acsf_params = self.acsf_params()
-
-    def acsf_params(self):
+    def acsf_params(self, method):
         """Return the parameters of symmetry functions.
+        Args:
+            method (dict): method dict to generate symmetry functions.
 
         Returns:
             params (dict): parameters of symmetry functions.
         """
 
         params = {}
-        if self.params['Method']['name'] == 'Giulio Imbalzano':
-            n = self.params['Method']['n']
+        if method['name'] == 'Giulio Imbalzano':
+            n = method['n']
             m = np.arange(n+1)
 
             eta_1 = (n**(m/n)/self.r_c)**2
@@ -191,18 +189,19 @@ class ACSF:
             G.append(torch.cat([G_rad, G_ang]))
         return torch.stack(G)
 
-    def transform(self, images, data_path=None):
+    def transform(self, images):
         """Calculate the symmetry functions for a list of images.
 
         Args:
             images (list): list of ase.Atoms [trajectory]
+            save_folder (str): folder to save the symmetry functions
 
         Returns:
-            acsf (torch.Tensor): symmetry functions
+            acsf (dict): symmetry functions values
         """
 
-        os.makedirs(data_path, exist_ok=True)
-        for i, image in enumerate(images):
+        acsf = {}
+        for i, image in enumerate(tqdm(images)):
             image_nbr_pos, image_nbr_sym = get_neighbors(image, self.r_c)
             image_pos = torch.from_numpy(image.positions).type(self.dtype)
             image_pos = image_pos.to(self.device).requires_grad_()
@@ -211,11 +210,19 @@ class ACSF:
                 image_pos, image_nbr_pos, image_nbr_sym)
             e = torch.tensor(image.get_potential_energy())
             f = torch.from_numpy(image.get_forces(apply_constraint=False))
-            torch.save({
+            acsf[i] = {
                 'E': e.type(self.dtype),
                 'F': f.type(self.dtype),
                 'N': len(image),
                 'G': G.detach(),
                 'dGdR': dGdR.detach(),
-                'numbers': torch.from_numpy(image.numbers)
-            }, f"{data_path}/{i:06d}.pt")
+                'numbers': torch.from_numpy(image.numbers)}
+        return acsf
+
+    def save(self):
+        """Save the ACSF object."""
+        torch.save({
+            'r_c': self.r_c,
+            'elements': self.elements,
+            'acsf_params': self.acsf_params},
+            self.wd+'/acsf.pt')

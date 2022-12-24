@@ -1,6 +1,6 @@
 ###############################################################################
 ##                                                                           ##
-##                     BPNN   parameters   file                              ##
+##                     EasyNN    parameters   file                           ##
 ##                                                           By  Ma Teng     ##
 ###############################################################################
 
@@ -12,25 +12,17 @@ Device: cpu                        # cpu or gpu
 Dtype: float32                     # float32 or float64
 Seed: 7                            # random seed
 Resume: True                       # resume from a checkpoint
-LogFile: LOG                       # log file name
+
 
 ##-----------------------------------------------------------------------------
 ## 2. Data parameters
 ##-----------------------------------------------------------------------------
 Elements: [79]                     # atomic number of elements
-Transform: True                    # transform the data
-Data:
-    0:
-        Path: /content/Au6_100t300v.traj
-        TrainSize: 100
-        ValidSize: 300
+DataPath: /content/Au_all_300t900v.traj
+TrainSize: 100
 Shuffle: False
-Scale:
-    Scale: True
-    Method: Standard              # Standard or MinMax
-    G: True
-    E: True
-    F: True
+ScaleMethod: Standard              # Standard or MinMax
+
 
 ##-----------------------------------------------------------------------------
 ## 3. ACSF parameters
@@ -40,13 +32,15 @@ Method:
     n: 6
 CutoffRadius: 6.0                 # Angstrom
 
+
 ##-----------------------------------------------------------------------------
 ## 4. NN parameters
 ##-----------------------------------------------------------------------------
 HiddenLayers: [16, 16]
 LearningRate: 0.0001
 MaxEpochs: 5000
-BatchSize: 100
+TrainBatchSize: 100
+ValidBatchSize: 10
 LossFn:
     Ce: 1.0                        # Coefficient of energy
     Cf: 1.0                        # Coefficient of force

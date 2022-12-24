@@ -1,7 +1,4 @@
-from easynn.descriptor import ACSF
 from ase.io import read
-import yaml
-import glob
 import torch
 import numpy as np
 
@@ -13,95 +10,71 @@ class EasyData:
         params_file (str): yaml file path of parameters
     """
 
-    def __init__(self, params_file):
-        with open(params_file, 'r') as f:
-            self.params = yaml.full_load(f)
-        self.descriptor = ACSF(self.params)
-        if self.params['Device'] == 'cpu':
-            self.device = torch.device('cpu')
-        elif self.params['Device'] == 'gpu':
-            self.device = torch.device('cuda:0')
+    def __init__(self, data_file, descriptor, device='cpu', dtype=torch.float32):
+        self.datafile = data_file
+        self.descriptor = descriptor
+        self.device = device
+        self.dtype = dtype
 
-        if self.params['Dtype'] == 'float64':
-            self.dtype = torch.float64
-        elif self.params['Dtype'] == 'float32':
-            self.dtype = torch.float32
-
-    def transform_data(self):
-        """Transform data.
-        """
-
-        p = self.params
-        for k in p['Data'].keys():
-            traj = read(p['Data'][k]['Path'], ':')
-            ts = p['Data'][k]['TrainSize']
-            train_images = traj[:ts]
-            self.descriptor.transform(train_images, p['WorkDir']+f"data/train-{k}")
-            vs = p['Data'][k]['ValidSize']
-            valid_images = traj[ts:ts+vs]
-            self.descriptor.transform(valid_images, p['WorkDir']+f"data/valid-{k}")
-
-    def load_data(self, train=True):
-        """Load data from data folders.
+    def split(self, train_size, shuffle=False):
+        """Split data into training and validation set.
 
         Args:
-            train (bool): whether to load training data
-            size (int): number of data to load
-
-        Returns:
-            data (dict): data dictionary, including E, F, N, G, dGdR
+            train_size (int): number of training images
+            shuffle (bool): shuffle the data or not
         """
 
-        p = self.params
-        E, F, N = [], [], []
-        G, dGdR, ID = [], [], []
-        for k in p['Data'].keys():
-            if train:
-                datapath = p['WorkDir']+f"data/train-{k}"
-                datasize = p['Data'][k]['TrainSize']
-            else:
-                datapath = p['WorkDir']+f"data/valid-{k}"
-                datasize = p['Data'][k]['ValidSize']
-            files = glob.glob(datapath+"/*.pt")
-            if p['Shuffle']:
-                ids = np.random.choice(len(files), datasize, replace=False)
-            else:
-                ids = np.arange(0, len(files), len(files)//datasize)
-            ids = torch.from_numpy(ids)
-            for i in ids:
-                datum = torch.load(datapath+f"/{i:06d}.pt")
-                E.append(datum['E'] / datum['N'])
-                F.append(datum['F'])
-                N.append(datum['N'])
-                G.append(datum['G'])
-                dGdR.append(datum['dGdR'])
-            ID.append(ids)
-        data = {'E': E, 'F': F, 'N': N, 'G': G, 'dGdR': dGdR, 'ID': ID}
-        return data
+        traj = read(self.datafile, ':')
+        if shuffle:
+            train_ids = np.random.choice(len(traj), train_size, replace=False)
+            train_images = traj[train_ids]
+            valid_ids = np.setdiff1d(np.arange(len(traj)), train_ids)
+            valid_images = traj[valid_ids]
+        else:
+            train_images = traj[:train_size]
+            valid_images = traj[train_size:]
+        return train_images, valid_images
 
-    def scale_data(self, data):
-        """Find scaling constants.
+    def transform(self, images, save_path):
+        """Transform coordinates of ase images to descriptors.
+        """
+        acsf = self.descriptor.transform(images)
+        torch.save(acsf, save_path)
+
+    def scale(self, data, method):
+        """Find scaling constants. The energy is divided by the number of atoms.
 
         Args:
-            data (dict): The data to be scaled.
+            data (list): list of dict
 
         Returns:
             scale (dict): scale constants dictionary
         """
 
-        p = self.params
+        E, F, G = [], [], []
+        for d in data:
+            E += [d[i]['E']/d[i]['N'] for i in range(len(d))]
+            F += [d[i]['F'] for i in range(len(d))]
+            G += [d[i]['G'] for i in range(len(d))]
+        E = torch.tensor(E)
+        F = torch.cat(F)
+        G = torch.cat(G)
+
         scale = {}
-        if p['Scale']['Method'] == 'Standard':
-            if p['Scale']['E']:
-                E = torch.tensor(data['E'])
-                scale['E_mean'] = E.mean().type(self.dtype).to(self.device)
-                scale['E_std'] = E.std().type(self.dtype).to(self.device)
-            if p['Scale']['F']:
-                F = torch.cat(data['F'])
-                scale['F_mean'] = F.mean().type(self.dtype).to(self.device)
-                scale['F_std'] = F.std().type(self.dtype).to(self.device)
-            if p['Scale']['G']:
-                G = torch.cat(data['G'])
-                scale['G_mean'] = G.mean(dim=0).type(self.dtype).to(self.device)
-                scale['G_std'] = G.std(dim=0).type(self.dtype).to(self.device)
+        if method == 'Minmax':
+            scale['E_min'] = E.min().item()
+            scale['E_max'] = E.max().item()
+            scale['F_min'] = F.min().item()
+            scale['F_max'] = F.max().item()
+            scale['G_min'] = G.min().item()
+            scale['G_max'] = G.max().item()
+            scale['method'] = 'Minmax'
+        elif method == 'Standard':
+            scale['E_mean'] = E.mean().item()
+            scale['E_std'] = E.std().item()
+            scale['F_mean'] = F.mean().item()
+            scale['F_std'] = F.std().item()
+            scale['G_mean'] = G.mean(dim=0).type(self.dtype).to(self.device)
+            scale['G_std'] = G.std(dim=0).type(self.dtype).to(self.device)
+            scale['method'] = 'Standard'
         return scale
